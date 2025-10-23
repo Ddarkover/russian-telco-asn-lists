@@ -1,0 +1,70 @@
+name: Update ASN IP Lists
+
+on:
+  # Запуск вручную
+  workflow_dispatch:
+  
+  # Автоматический запуск каждую неделю в воскресенье в 02:00 UTC
+  schedule:
+    - cron: '0 2 * * 0'
+
+jobs:
+  update-asn-lists:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        pip install requests ipaddress
+        
+    - name: Generate ASN IP lists
+      run: |
+        echo "Starting ASN IP lists generation..."
+        python generate_asn_lists.py
+        echo "Generation completed with exit code: $?"
+        
+    - name: Debug - List generated files
+      run: |
+        echo "Current directory contents:"
+        ls -la
+        echo "Looking for generated files:"
+        find . -name "*.txt" -o -name "*.json" | head -10
+        
+    - name: Check if files were generated
+      run: |
+        if ls *.txt *.json 1> /dev/null 2>&1; then
+          echo "FILES_GENERATED=true" >> $GITHUB_ENV
+          echo "✓ Files were successfully generated"
+          ls -la *.txt *.json
+        else
+          echo "FILES_GENERATED=false" >> $GITHUB_ENV
+          echo "✗ No files were generated"
+        fi
+        
+    - name: Commit and push changes
+      if: env.FILES_GENERATED == 'true'
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add *.txt *.json
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "Update ASN IP lists - $(date -u +%Y-%m-%d)"
+          git push
+          echo "✓ Changes committed and pushed"
+        fi
+        
+    - name: Report failure
+      if: env.FILES_GENERATED == 'false'
+      run: |
+        echo "::error::Failed to generate ASN IP lists. Check the Python script logs above."
+        exit 1
